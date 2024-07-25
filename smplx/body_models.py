@@ -609,12 +609,13 @@ class SMPLH(SMPL):
         self.num_pca_comps = num_pca_comps
         self.flat_hand_mean = flat_hand_mean
 
-        left_hand_components = data_struct.hands_componentsl[:num_pca_comps]
-        right_hand_components = data_struct.hands_componentsr[:num_pca_comps]
-
-        self.np_left_hand_components = left_hand_components
-        self.np_right_hand_components = right_hand_components
         if self.use_pca:
+            left_hand_components = data_struct.hands_componentsl[:num_pca_comps]
+            right_hand_components = data_struct.hands_componentsr[:num_pca_comps]
+
+            self.np_left_hand_components = left_hand_components
+            self.np_right_hand_components = right_hand_components
+            
             self.register_buffer(
                 'left_hand_components',
                 torch.tensor(left_hand_components, dtype=dtype))
@@ -623,12 +624,12 @@ class SMPLH(SMPL):
                 torch.tensor(right_hand_components, dtype=dtype))
 
         if self.flat_hand_mean:
-            left_hand_mean = np.zeros_like(data_struct.hands_meanl)
+            left_hand_mean = np.zeros(45)
         else:
             left_hand_mean = data_struct.hands_meanl
 
         if self.flat_hand_mean:
-            right_hand_mean = np.zeros_like(data_struct.hands_meanr)
+            right_hand_mean = np.zeros(45)
         else:
             right_hand_mean = data_struct.hands_meanr
 
