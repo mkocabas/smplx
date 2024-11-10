@@ -1736,6 +1736,7 @@ class MANOLayer(MANO):
         transl: Optional[Tensor] = None,
         return_verts: bool = True,
         return_full_pose: bool = False,
+        pose2rot = False,
         **kwargs
     ) -> MANOOutput:
         ''' Forward pass for the MANO model
@@ -1760,7 +1761,7 @@ class MANOLayer(MANO):
         vertices, joints = lbs(betas, full_pose, self.v_template,
                                self.shapedirs, self.posedirs,
                                self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=False)
+                               self.lbs_weights, pose2rot=pose2rot)
 
         if self.joint_mapper is not None:
             joints = self.joint_mapper(joints)
