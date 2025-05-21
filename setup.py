@@ -1,78 +1,67 @@
-# -*- coding: utf-8 -*-
-
-# Max-Planck-Gesellschaft zur Förderung der Wissenschaften e.V. (MPG) is
-# holder of all proprietary rights on this computer program.
-# You can only use this computer program if you have closed
-# a license agreement with MPG or you get the right to use the computer
-# program from someone who is authorized to grant you that right.
-# Any use of the computer program without a valid license is prohibited and
-# liable to prosecution.
-#
-# Copyright©2019 Max-Planck-Gesellschaft zur Förderung
-# der Wissenschaften e.V. (MPG). acting on behalf of its Max Planck Institute
-# for Intelligent Systems and the Max Planck Institute for Biological
-# Cybernetics. All rights reserved.
-#
-# Contact: ps-license@tuebingen.mpg.de
-
-import io
+from setuptools import setup, find_packages
+from torch.utils.cpp_extension import BuildExtension, CUDAExtension
 import os
+# import torch # Not strictly needed for setup.py unless get_cuda_arch_list is used directly here
 
-from setuptools import setup
+def get_cuda_arch_flags():
+    # This is a common way to get PyTorch's detected CUDA architecture
+    # However, torch.utils.cpp_extension.CUDAExtension usually handles this.
+    # For explicit control or if issues arise:
+    # import torch # Moved inside if needed
+    # arch_list = torch.cuda.get_arch_list()
+    # if arch_list:
+    #    flags = []
+    #    for arch in arch_list:
+    #        num = arch.split('_')[-1]
+    #        flags.append(f'-gencode=arch=compute_{num},code=sm_{num}')
+    #    return flags
+    return [] # Let CUDAExtension handle it by default
 
-# Package meta-data.
-NAME = 'smplx'
-DESCRIPTION = 'PyTorch module for loading the SMPLX body model'
-URL = 'http://smpl-x.is.tuebingen.mpg.de'
-EMAIL = 'vassilis.choutas@tuebingen.mpg.de'
-AUTHOR = 'Vassilis Choutas'
-REQUIRES_PYTHON = '>=3.6.0'
-VERSION = '0.1.28'
+# Define source files
+csrc_dir = os.path.join('cuda_smplx', 'csrc')
+python_dir = os.path.join('cuda_smplx', 'python')
 
-here = os.path.abspath(os.path.dirname(__file__))
+source_files = [
+    os.path.join(csrc_dir, 'blend_shapes.cu'),
+    os.path.join(csrc_dir, 'vertices_to_joints.cu'),
+    os.path.join(csrc_dir, 'batch_rodrigues.cu'),
+    os.path.join(csrc_dir, 'batch_rigid_transform.cu'),
+    os.path.join(csrc_dir, 'skinning.cu'),
+    os.path.join(csrc_dir, 'smplx_cuda_forward.cu'),
+    os.path.join(csrc_dir, 'smplx_cuda_backward.cu'),
+    os.path.join(python_dir, 'bindings.cpp'),
+]
 
-try:
-    FileNotFoundError
-except NameError:
-    FileNotFoundError = IOError
+# Define include directories
+include_dirs = [
+    os.path.abspath(csrc_dir), # To find .h files in csrc
+]
 
-# Import the README and use it as the long-description.
-# Note: this will only work if 'README.md' is present in your MANIFEST.in file!
-try:
-    with io.open(os.path.join(here, 'README.md'), encoding='utf-8') as f:
-        long_description = '\n' + f.read()
-except FileNotFoundError:
-    long_description = DESCRIPTION
+# Define extra compile arguments
+# Add -std=c++17 for C++17 features if used (Pybind11 benefits from it)
+cpp_args = ['-O3', '-std=c++17'] 
+nvcc_args = ['-O3', '-std=c++17'] 
+# nvcc_args.extend(get_cuda_arch_flags()) # Optionally add specific arch flags
 
-# Load the package's __version__.py module as a dictionary.
-about = {}
-if not VERSION:
-    with open(os.path.join(here, NAME, '__version__.py')) as f:
-        exec(f.read(), about)
-else:
-    about['__version__'] = VERSION
-
-pyrender_reqs = ['pyrender>=0.1.23', 'trimesh>=2.37.6', 'shapely']
-matplotlib_reqs = ['matplotlib']
-open3d_reqs = ['open3d-python']
-
-setup(name=NAME,
-      version=about['__version__'],
-      description=DESCRIPTION,
-      long_description=long_description,
-      long_description_content_type='text/markdown',
-      author=AUTHOR,
-      author_email=EMAIL,
-      python_requires=REQUIRES_PYTHON,
-      url=URL,
-      install_requires=[
-          'numpy>=1.16.2',
-          'torch>=1.0.1.post2',
-      ],
-      extras_require={
-          'pyrender': pyrender_reqs,
-          'open3d': open3d_reqs,
-          'matplotlib': matplotlib_reqs,
-          'all': pyrender_reqs + matplotlib_reqs + open3d_reqs
-      },
-      packages=['smplx'])
+setup(
+    name='cuda_smplx_layer', # Name of the package
+    version='0.1.0',
+    author='AI Agent', # Updated author
+    description='CUDA implementation for SMPL-X layer components',
+    long_description='Provides an optimized CUDA forward and backward pass for SMPL-X body model components, including autograd support.',
+    ext_modules=[
+        CUDAExtension(
+            name='cuda_smplx_ops', # How it's imported: import cuda_smplx_ops
+            sources=source_files,
+            include_dirs=include_dirs,
+            extra_compile_args={'cxx': cpp_args, 'nvcc': nvcc_args}
+        )
+    ],
+    cmdclass={
+        'build_ext': BuildExtension
+    },
+    packages=find_packages(where='.', include=['cuda_smplx_ops*']), 
+    # The prompt notes this might not be strictly necessary for a pure extension.
+    # Keeping as per prompt for now.
+    zip_safe=False, 
+)

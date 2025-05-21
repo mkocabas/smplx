@@ -9,6 +9,7 @@
   * [License](#license)
   * [Description](#description)
   * [News](#news)
+  * [CUDA-Accelerated SMPL-X (`cuda_smplx`)](#cuda-accelerated-smpl-x-cuda_smplx)
   * [Installation](#installation)
   * [Downloading the model](#downloading-the-model)
   * [Loading SMPL-X, SMPL+H and SMPL](#loading-smpl-x-smplh-and-smpl) 
@@ -52,6 +53,18 @@ SMPL-X is defined by a function M(θ, β, ψ), where θ is the pose parameters, 
 - 23 September 2020: A UV map is now available for SMPL-X, please check the
   Downloads section of the website.
 - 20 August 2020: The full shape and expression space of SMPL-X are now available.
+
+## CUDA-Accelerated SMPL-X (`cuda_smplx`)
+
+This project includes a module, `cuda_smplx`, designed to provide CUDA-accelerated implementations of core SMPL-X body model operations. The aim is to enhance performance for both forward and backward passes, particularly beneficial for scenarios involving batch processing and integration into deep learning pipelines.
+
+For detailed information on the `cuda_smplx` module, including:
+- Installation of the CUDA extension
+- Running unit tests
+- Usage examples and demos
+- Specific API details and known limitations
+
+Please refer to its dedicated documentation: [cuda_smplx Module README](./cuda_smplx/docs/README.md).
 
 ## Installation
 
