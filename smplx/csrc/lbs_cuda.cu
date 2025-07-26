@@ -256,19 +256,3 @@ torch::Tensor lbs_cuda(
     cudaDeviceSynchronize();
     return posed_vertices;
 }
-
-// Combined LBS forward pass
-torch::Tensor lbs_forward_cuda(
-    torch::Tensor vertices,     // [B, V, 3]
-    torch::Tensor weights,      // [V, J]
-    torch::Tensor rot_mats,     // [B, J, 3, 3]
-    torch::Tensor joints,       // [B, J, 3]
-    torch::Tensor parents       // [J]
-) {
-    // First compute transforms
-    auto results = batch_rigid_transform_cuda(rot_mats, joints, parents);
-    auto rel_transforms = results[1];  // Get the relative transforms
-    
-    // Then apply LBS
-    return lbs_cuda(vertices, weights, rel_transforms);
-}
