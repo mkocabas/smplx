@@ -22,6 +22,24 @@ torch::Tensor lbs_forward_cuda(
     torch::Tensor parents
 );
 
+// Backward pass
+std::vector<torch::Tensor> lbs_backward_cuda(
+    torch::Tensor grad_posed_vertices,
+    torch::Tensor vertices,
+    torch::Tensor weights,
+    torch::Tensor transforms
+);
+
+std::vector<torch::Tensor> batch_rigid_transform_backward_cuda(
+    torch::Tensor grad_posed_joints,
+    torch::Tensor grad_rel_transforms,
+    torch::Tensor rot_mats,
+    torch::Tensor joints,
+    torch::Tensor parents,
+    torch::Tensor transform_chain
+);
+
+
 // Check tensor properties and move to CUDA if needed
 #define CHECK_CUDA(x) TORCH_CHECK(x.device().is_cuda(), #x " must be a CUDA tensor")
 #define CHECK_CONTIGUOUS(x) TORCH_CHECK(x.is_contiguous(), #x " must be contiguous")
@@ -122,6 +140,40 @@ torch::Tensor lbs_forward(
     return lbs_forward_cuda(vertices, weights, rot_mats, joints, parents);
 }
 
+// Binding for the backward functions
+std::vector<torch::Tensor> lbs_backward(
+    torch::Tensor grad_posed_vertices,
+    torch::Tensor vertices,
+    torch::Tensor weights,
+    torch::Tensor transforms
+) {
+    CHECK_INPUT(grad_posed_vertices);
+    CHECK_INPUT(vertices);
+    CHECK_INPUT(weights);
+    CHECK_INPUT(transforms);
+    return lbs_backward_cuda(grad_posed_vertices, vertices, weights, transforms);
+}
+
+std::vector<torch::Tensor> batch_rigid_transform_backward(
+    torch::Tensor grad_posed_joints,
+    torch::Tensor grad_rel_transforms,
+    torch::Tensor rot_mats,
+    torch::Tensor joints,
+    torch::Tensor parents,
+    torch::Tensor transform_chain
+) {
+    CHECK_INPUT(grad_posed_joints);
+    CHECK_INPUT(grad_rel_transforms);
+    CHECK_INPUT(rot_mats);
+    CHECK_INPUT(joints);
+    CHECK_INPUT(parents);
+    CHECK_INPUT(transform_chain);
+    return batch_rigid_transform_backward_cuda(
+        grad_posed_joints, grad_rel_transforms, rot_mats, joints, parents, transform_chain
+    );
+}
+
+
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
     m.def("batch_rigid_transform", &batch_rigid_transform, 
           "Batch rigid transformation (CUDA)");
@@ -129,4 +181,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m) {
           "Linear Blend Skinning (CUDA)");  
     m.def("lbs_forward", &lbs_forward, 
           "Combined LBS forward pass (CUDA)");
+    m.def("lbs_backward", &lbs_backward,
+          "LBS backward pass (CUDA)");
+    m.def("batch_rigid_transform_backward", &batch_rigid_transform_backward,
+            "Batch rigid transform backward pass (CUDA)");
 }

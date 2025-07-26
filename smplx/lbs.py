@@ -263,6 +263,51 @@ def lbs(
     return verts, J_transformed
 
 
+class LBS(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, vertices, weights, transforms):
+        ctx.save_for_backward(vertices, weights, transforms)
+        return lbs_cuda_ext.lbs(
+            vertices.contiguous(),
+            weights.contiguous(),
+            transforms.contiguous()
+        )
+
+    @staticmethod
+    def backward(ctx, grad_posed_vertices):
+        vertices, weights, transforms = ctx.saved_tensors
+        grad_vertices, grad_weights, grad_transforms = lbs_cuda_ext.lbs_backward(
+            grad_posed_vertices.contiguous(),
+            vertices.contiguous(),
+            weights.contiguous(),
+            transforms.contiguous()
+        )
+        return grad_vertices, grad_weights, grad_transforms
+
+class BatchRigidTransform(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, rot_mats, joints, parents):
+        posed_joints, rel_transforms, transform_chain = lbs_cuda_ext.batch_rigid_transform(
+            rot_mats.contiguous(),
+            joints.contiguous(),
+            parents.float().contiguous()
+        )
+        ctx.save_for_backward(rot_mats, joints, parents, transform_chain)
+        return posed_joints, rel_transforms
+
+    @staticmethod
+    def backward(ctx, grad_posed_joints, grad_rel_transforms):
+        rot_mats, joints, parents, transform_chain = ctx.saved_tensors
+        grad_rot_mats, grad_joints = lbs_cuda_ext.batch_rigid_transform_backward(
+            grad_posed_joints.contiguous(),
+            grad_rel_transforms.contiguous(),
+            rot_mats.contiguous(),
+            joints.contiguous(),
+            parents.float().contiguous(),
+            transform_chain.contiguous()
+        )
+        return grad_rot_mats, grad_joints, None
+
 def batch_rigid_transform_cuda(
     rot_mats: Tensor,
     joints: Tensor,
@@ -292,14 +337,7 @@ def batch_rigid_transform_cuda(
         for all the joints
     """
     
-    # Call CUDA implementation
-    posed_joints, rel_transforms = lbs_cuda_ext.batch_rigid_transform(
-        rot_mats.contiguous(),
-        joints.contiguous(),
-        parents.float().contiguous()
-    )
-    
-    return posed_joints, rel_transforms
+    return BatchRigidTransform.apply(rot_mats, joints, parents)
 
 
 def lbs_cuda(
@@ -357,13 +395,14 @@ def lbs_cuda(
     
     # Use CUDA LBS kernel for the final skinning step
     # The CUDA kernel expects joint transforms and does the weighted blending
-    verts = lbs_cuda_ext.lbs(
+    verts = LBS.apply(
         v_posed.contiguous(),
         lbs_weights.contiguous(),
         A.contiguous()
     )
     
     return verts, J_transformed
+
 
 
 def vertices2joints(J_regressor: Tensor, vertices: Tensor) -> Tensor:
