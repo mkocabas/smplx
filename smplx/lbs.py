@@ -26,6 +26,17 @@ import torch.nn.functional as F
 
 from .utils import rot_mat_to_euler, Tensor
 
+# Try to import CUDA LBS extension
+try:
+    import sys
+    import os
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'csrc'))
+    import lbs_cuda_ext
+    CUDA_LBS_AVAILABLE = True
+except ImportError:
+    CUDA_LBS_AVAILABLE = False
+    lbs_cuda_ext = None
+
 
 def find_dynamic_lmk_idx_and_bcoords(
     vertices: Tensor,
@@ -249,6 +260,109 @@ def lbs(
 
     verts = v_homo[:, :, :3, 0]
 
+    return verts, J_transformed
+
+
+def batch_rigid_transform_cuda(
+    rot_mats: Tensor,
+    joints: Tensor,
+    parents: Tensor,
+    dtype=torch.float32
+) -> Tuple[Tensor, Tensor]:
+    """
+    CUDA-accelerated batch rigid transformation with kinematic chain
+    
+    Parameters
+    ----------
+    rot_mats : torch.tensor BxNx3x3
+        Tensor of rotation matrices
+    joints : torch.tensor BxNx3
+        Locations of joints
+    parents : torch.tensor BxN
+        The kinematic tree of each object
+    dtype : torch.dtype, optional:
+        The data type of the created tensors, the default is torch.float32
+
+    Returns
+    -------
+    posed_joints : torch.tensor BxNx3
+        The locations of the joints after applying the pose rotations
+    rel_transforms : torch.tensor BxNx4x4
+        The relative (with respect to the root joint) rigid transformations
+        for all the joints
+    """
+    
+    # Call CUDA implementation
+    posed_joints, rel_transforms = lbs_cuda_ext.batch_rigid_transform(
+        rot_mats.contiguous(),
+        joints.contiguous(),
+        parents.float().contiguous()
+    )
+    
+    return posed_joints, rel_transforms
+
+
+def lbs_cuda(
+    betas: Tensor,
+    pose: Tensor,
+    v_template: Tensor,
+    shapedirs: Tensor,
+    posedirs: Tensor,
+    J_regressor: Tensor,
+    parents: Tensor,
+    lbs_weights: Tensor,
+    pose2rot: bool = True,
+) -> Tuple[Tensor, Tensor]:
+    ''' CUDA-accelerated Linear Blend Skinning with the given shape and pose parameters
+        
+        Parameters are identical to the standard lbs() function.
+        
+        Returns
+        -------
+        verts: torch.tensor BxVx3
+            The vertices of the mesh after applying the shape and pose
+            displacements.
+        joints: torch.tensor BxJx3
+            The joints of the model
+    '''
+    
+    batch_size = max(betas.shape[0], pose.shape[0])
+    device, dtype = betas.device, betas.dtype
+    
+    # Add shape contribution
+    v_shaped = v_template + blend_shapes(betas, shapedirs)
+    
+    # Get the joints
+    J = vertices2joints(J_regressor, v_shaped)
+    
+    # Convert pose to rotation matrices if needed
+    if pose2rot:
+        rot_mats = batch_rodrigues(pose.view(-1, 3)).view([batch_size, -1, 3, 3])
+        
+        # Add pose blend shapes
+        ident = torch.eye(3, dtype=dtype, device=device)
+        pose_feature = (rot_mats[:, 1:, :, :] - ident).view([batch_size, -1])
+        pose_offsets = torch.matmul(pose_feature, posedirs).view(batch_size, -1, 3)
+    else:
+        rot_mats = pose.view(batch_size, -1, 3, 3)
+        ident = torch.eye(3, dtype=dtype, device=device)
+        pose_feature = pose[:, 1:].view(batch_size, -1, 3, 3) - ident
+        pose_offsets = torch.matmul(pose_feature.view(batch_size, -1),
+                                   posedirs).view(batch_size, -1, 3)
+    
+    v_posed = pose_offsets + v_shaped
+    
+    # Use CUDA batch_rigid_transform for kinematic transforms
+    J_transformed, A = batch_rigid_transform_cuda(rot_mats, J, parents, dtype=dtype)
+    
+    # Use CUDA LBS kernel for the final skinning step
+    # The CUDA kernel expects joint transforms and does the weighted blending
+    verts = lbs_cuda_ext.lbs(
+        v_posed.contiguous(),
+        lbs_weights.contiguous(),
+        A.contiguous()
+    )
+    
     return verts, J_transformed
 
 

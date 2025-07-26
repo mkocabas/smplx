@@ -26,7 +26,7 @@ import torch
 import torch.nn as nn
 
 from .lbs import (
-    lbs, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords, blend_shapes)
+    lbs, lbs_cuda, vertices2landmarks, find_dynamic_lmk_idx_and_bcoords, blend_shapes)
 
 from .vertex_ids import vertex_ids as VERTEX_IDS
 from .utils import (
@@ -921,6 +921,7 @@ class SMPLX(SMPLH):
         create_reye_pose=True,
         reye_pose: Optional[Tensor] = None,
         use_face_contour: bool = False,
+        use_cuda_lbs: bool = False,
         batch_size: int = 1,
         gender: str = 'neutral',
         age: str = 'adult',
@@ -964,6 +965,9 @@ class SMPLX(SMPLH):
                 (default = None)
             use_face_contour: bool, optional
                 Whether to compute the keypoints that form the facial contour
+            use_cuda_lbs: bool, optional
+                Whether to use CUDA-accelerated Linear Blend Skinning
+                (default = False)
             batch_size: int, optional
                 The batch size used for creating the member variables
             gender: str, optional
@@ -1027,6 +1031,8 @@ class SMPLX(SMPLH):
             self.register_buffer(
                 'neck_kin_chain',
                 torch.tensor(neck_kin_chain, dtype=torch.long))
+
+        self.use_cuda_lbs = use_cuda_lbs
 
         if create_jaw_pose:
             if jaw_pose is None:
@@ -1241,11 +1247,18 @@ class SMPLX(SMPLH):
 
         shapedirs = torch.cat([self.shapedirs, self.expr_dirs], dim=-1)
 
-        vertices, joints = lbs(shape_components, full_pose, self.v_template,
-                               shapedirs, self.posedirs,
-                               self.J_regressor, self.parents,
-                               self.lbs_weights, pose2rot=pose2rot,
-                               )
+        if self.use_cuda_lbs:
+            vertices, joints = lbs_cuda(shape_components, full_pose, self.v_template,
+                                       shapedirs, self.posedirs,
+                                       self.J_regressor, self.parents,
+                                       self.lbs_weights, pose2rot=pose2rot,
+                                       )
+        else:
+            vertices, joints = lbs(shape_components, full_pose, self.v_template,
+                                   shapedirs, self.posedirs,
+                                   self.J_regressor, self.parents,
+                                   self.lbs_weights, pose2rot=pose2rot,
+                                   )
 
         lmk_faces_idx = self.lmk_faces_idx.unsqueeze(
             dim=0).expand(batch_size, -1).contiguous()
